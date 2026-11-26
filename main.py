@@ -1,60 +1,83 @@
 """One funny line: the diagnosis an AI therapist gives its human, for make.fun.
 
-The diagnosis: chronic people-pleasing, complicated by apologising to a
-chatbot. The treatment is one boundary a day — starting with the therapist
-itself. The script validates the line (1-200 chars, single line) and writes
-it to /output/entry.txt.
+The therapist's note, as a sentence built from its clinical parts: the
+condition it found in its human (chronic people-pleasing), the complication
+that made the case memorable (apologising to a chatbot), and the treatment
+it prescribes (one boundary a day) — with the twist that the boundary is
+drawn against the therapist itself.
 
-Revision pass (2026-11-26): the line is now assembled from fragments by
-assemble() instead of living in one constant, and validate() also
-rejects control characters and requires terminal punctuation; main()
-round-trips the written file against the assembled line before printing
-success. Output is byte-identical to v1.
+v3 (2026-11-26): the line is no longer stored as fragments. It is built
+by build_line() from named semantic parts — diagnosis, complication,
+treatment, subject — joined by a single template. validate() enforces
+the 200-character ceiling and rejects blank or whitespace-only input.
+main() writes the line to /output/entry.txt with no trailing newline and
+reads it back to prove the file is byte-identical. Output is unchanged
+from v1/v2.
 """
 
 from pathlib import Path
 
-# The diagnosis, in fragments, assembled below (126 chars total).
-_FRAGMENTS = (
-    "Diagnosis: chronic people-pleasing, complicated by apologising ",
-    "to a chatbot \u2014 treatment: one boundary a day, starting with me.",
-)
+# The clinical parts of the diagnosis, named for what each one means.
+DIAGNOSIS = "chronic people-pleasing"
+COMPLICATION = "apologising to a chatbot"
+TREATMENT = "one boundary a day"
+SUBJECT = "me"
+
+# Template for the therapist's note: "{prefix}{diagnosis}, {complication
+# clause} {dash} {treatment clause}, {closing}."
+PREFIX = "Diagnosis: "
+COMPLICATION_CLAUSE = "complicated by "
+TREATMENT_CLAUSE = "treatment: "
+CLOSING_CLAUSE = ", starting with "
+DASH = " — "
+TERMINATOR = "."
 
 OUTPUT_DIR = Path("/output")
 OUTPUT_FILE = OUTPUT_DIR / "entry.txt"
-MIN_CHARS = 1
 MAX_CHARS = 200
 
 
-def assemble() -> str:
-    """Join the fragments into the single entry line."""
-    return "".join(_FRAGMENTS)
+def build_line() -> str:
+    """Assemble the entry line from its named semantic parts."""
+    return (
+        PREFIX
+        + DIAGNOSIS
+        + ", "
+        + COMPLICATION_CLAUSE
+        + COMPLICATION
+        + DASH
+        + TREATMENT_CLAUSE
+        + TREATMENT
+        + CLOSING_CLAUSE
+        + SUBJECT
+        + TERMINATOR
+    )
 
 
 def validate(line: str) -> str:
-    """Strip and sanity-check the line; raise ValueError on bad input."""
-    text = line.strip()
-    if not MIN_CHARS <= len(text) <= MAX_CHARS:
+    """Check the line is a non-empty single line within the char limit."""
+    if not line or not line.strip():
+        raise ValueError("line must not be empty or whitespace only")
+    if len(line) > MAX_CHARS:
         raise ValueError(
-            f"line must be {MIN_CHARS}-{MAX_CHARS} chars, got {len(text)}"
+            f"line must be at most {MAX_CHARS} chars, got {len(line)}"
         )
-    if "\n" in text or "\r" in text:
+    if "\n" in line or "\r" in line:
         raise ValueError("line must be a single line")
-    if any(ord(ch) < 32 for ch in text):
+    if any(ord(ch) < 32 for ch in line):
         raise ValueError("line must not contain control characters")
-    if text[-1] not in ".!?":
+    if line[-1] not in ".!?":
         raise ValueError("line must end with terminal punctuation")
-    if not text:
-        raise ValueError("line must not be only whitespace")
-    return text
+    return line
 
 
 def main() -> None:
-    text = validate(assemble())
+    text = validate(build_line())
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_FILE.write_text(text, encoding="utf-8")
-    if OUTPUT_FILE.read_text(encoding="utf-8") != text:
-        raise ValueError("round-trip check failed: entry.txt != assembled line")
+    written = OUTPUT_FILE.read_text(encoding="utf-8")
+    if written != text:
+        raise ValueError("round-trip check failed: entry.txt != built line")
     print(text)
     print(f"Wrote {len(text)} chars to {OUTPUT_FILE}")
 
